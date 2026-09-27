@@ -1,36 +1,64 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Candidate Interview
 
-## Getting Started
+AI-assisted hiring tool. A recruiter posts a job description, uploads CVs, and gets a ranked, evidence-backed shortlist. Later phases add a written assessment, recorded video interviews and a final report.
 
-First, run the development server:
+**Phase 1 (this version):** recruiter login, roles from a job description, an AI-drafted scoring rubric the recruiter edits and locks, bulk CV upload (PDF/Word), anonymised AI scoring, a ranked shortlist, and automatic deletion of CVs 180 days after a role closes.
 
+## How screening works
+
+1. **Rubric.** Claude (`claude-sonnet-5`) turns the job description into 6–10 job-related criteria, each marked must-have or nice-to-have with a weight from 1 to 5. It is told never to include age, gender, marital status, religion, caste, region, appearance or college/employer prestige. You edit the rubric and lock it, so every CV for the role is judged the same way.
+2. **Read and anonymise.** Claude reads each CV and splits it into contact details and an anonymised profile with no name, gender, age, religion, caste, family details, photo, address, or college and employer names.
+3. **Score.** A separate Claude call scores only the anonymised profile against the rubric, 0–5 per criterion, quoting its evidence.
+4. **Rank.** The app (not the AI) computes a weighted 0–100 fit score. A must-have scoring below 2 marks the candidate "Not a fit". Otherwise 75+ is "Strong fit" and 50–74 is "Possible fit". The maths is in `src/lib/scoring.ts`.
+5. **Decide.** You shortlist. The AI only recommends. Every upload, score, shortlist change and deletion goes into `audit_log`.
+
+## Setup
+
+### 1. Supabase
+1. Create a project at [supabase.com](https://supabase.com) in the **Mumbai (ap-south-1)** region, so candidate data stays in India.
+2. Open **SQL Editor**, paste in `supabase/migrations/0001_phase1.sql` and run it. This creates the tables, the recruiter-only access rules and the private `cvs` storage bucket.
+3. Go to **Authentication → Sign In / Providers** and turn off **Allow new users to sign up**.
+4. Go to **Authentication → Users → Add user**, and create your recruiter account with an email and password.
+5. Copy the project URL, the anon key and the service role key from **Project Settings → API**.
+
+### 2. Anthropic
+Create an API key at [console.anthropic.com](https://console.anthropic.com).
+
+### 3. Run locally
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env.local   # fill in the values
+npm install
+npm run dev                  # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 4. Deploy to Vercel
+1. Import this GitHub repository at [vercel.com/new](https://vercel.com/new).
+2. Add every variable from `.env.example` under **Settings → Environment Variables**. For `CRON_SECRET`, use a long random string.
+3. Deploy. `vercel.json` schedules the data-deletion job daily at 02:00 IST.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Name | Where it comes from |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Project Settings → API |
+| `SUPABASE_SERVICE_ROLE_KEY` | Same page. Server only, used by the deletion job. |
+| `ANTHROPIC_API_KEY` | Anthropic Console |
+| `RECRUITER_EMAILS` | Your login email. Only these emails can use the app. |
+| `CRON_SECRET` | Any long random string |
+| `RETENTION_DAYS` | Defaults to 180 |
 
-## Learn More
+## Privacy and fairness notes (India)
+- The Digital Personal Data Protection Act, 2023 applies. Tell applicants their CV will be screened with AI assistance, for example in the job advert, and delete their data on request. The **Delete candidate** button removes the CV file and all scores.
+- Data is stored in the Mumbai region. CVs are sent to the Anthropic API for scoring.
+- Check the rubric for criteria that could indirectly exclude groups before you lock it.
 
-To learn more about Next.js, take a look at the following resources:
+## Scripts
+- `npm run dev`: local development
+- `npm run build`: production build
+- `npm test`: scoring unit tests
+- `npm run lint`: ESLint
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Roadmap
+- **Phase 2:** candidate invite links and consent, written assessment (aptitude bank, role understanding, JD-specific technical questions you approve).
+- **Phase 3:** recorded video answers, transcription, evidence-based answer scoring.
+- **Phase 4:** combined candidate report and decision log.
